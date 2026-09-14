@@ -3,10 +3,11 @@ package transcribe_test
 import (
 	"math"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
-	"transcribe"
+	"github.com/oraraka-deko/transcribe"
 )
 
 func TestResampleMonoFloat32(t *testing.T) {
@@ -93,4 +94,50 @@ func TestTranscriber(t *testing.T) {
 	}
 
 	t.Logf("Transcribed in %v: %q", elapsed, text)
+}
+
+func TestTranscribeOGGOpus(t *testing.T) {
+	modelPath := "ggml-tiny-q8_0.bin"
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		modelPath = "ggml-base-q8_0.bin"
+	}
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		t.Skip("No whisper model found, skipping transcription test")
+	}
+
+	audioPath := "audio.wav"
+	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
+		t.Skip("audio.wav not found, skipping transcription test")
+	}
+
+	// Create test OGG Opus file using ffmpeg
+	oggPath := "test_voice.ogg"
+	cmd := exec.Command("ffmpeg", "-y", "-i", audioPath, "-c:a", "libopus", oggPath)
+	if err := cmd.Run(); err != nil {
+		t.Skipf("ffmpeg not available or failed to encode ogg: %v", err)
+	}
+	defer os.Remove(oggPath)
+
+	tr, err := transcribe.New(transcribe.Config{
+		ModelPath: modelPath,
+		Language:  "en",
+		Threads:   4,
+	})
+	if err != nil {
+		t.Fatalf("Failed to initialize Transcriber: %v", err)
+	}
+	defer tr.Close()
+
+	start := time.Now()
+	text, err := tr.TranscribeFile(oggPath)
+	if err != nil {
+		t.Fatalf("TranscribeFile on OGG Opus failed: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	if len(text) == 0 {
+		t.Fatal("Transcribed text is empty")
+	}
+
+	t.Logf("Transcribed OGG Opus in %v: %q", elapsed, text)
 }

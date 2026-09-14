@@ -1,11 +1,13 @@
 package transcribe
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"os/exec"
 
 	resampler "github.com/godeps/go-audio-soxr"
 )
@@ -95,14 +97,27 @@ func ReadWAV(r io.Reader) ([]float32, error) {
 			if !foundFmt {
 				return nil, fmt.Errorf("WAV data chunk found before fmt chunk")
 			}
-			audioData = make([]byte, chunkSize)
-			if _, err := io.ReadFull(r, audioData); err != nil {
-				return nil, fmt.Errorf("failed to read audio data: %w", err)
-			}
-			// Pad byte if chunk size is odd
-			if chunkSize%2 != 0 {
-				var pad [1]byte
-				_, _ = io.ReadFull(r, pad[:])
+			if chunkSize == 0xFFFFFFFF || chunkSize == 0x7FFFFFFF {
+				var err error
+				audioData, err = io.ReadAll(r)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read streaming audio data: %w", err)
+				}
+			} else {
+				audioData = make([]byte, chunkSize)
+				if _, err := io.ReadFull(r, audioData); err != nil {
+					// In some stream pipes, chunk size in header may slightly exceed available bytes
+					if err == io.ErrUnexpectedEOF {
+						// read whatever was available
+					} else {
+						return nil, fmt.Errorf("failed to read audio data: %w", err)
+					}
+				}
+				// Pad byte if chunk size is odd
+				if chunkSize%2 != 0 {
+					var pad [1]byte
+					_, _ = io.ReadFull(r, pad[:])
+				}
 			}
 
 		default:
@@ -178,4 +193,31 @@ func ReadWAVFile(path string) ([]float32, error) {
 // ReadWAVSamples parses a WAV file into 16kHz float32 samples (alias for ReadWAVFile).
 func ReadWAVSamples(path string) ([]float32, error) {
 	return ReadWAVFile(path)
+}
+
+// ReadAudioFile reads an audio file (WAV, OGG Opus, MP3, AAC, FLAC, M4A, etc.)
+// and returns 16kHz mono float32 samples.
+// It directly parses WAV files, and falls back to ffmpeg if available for other formats.
+func ReadAudioFile(path string) ([]float32, error) {
+	// First attempt pure Go WAV parsing
+	samples, err := ReadWAVFile(path)
+	if err == nil && len(samples) > 0 {
+		return samples, nil
+	}
+
+	// Try decoding with ffmpeg to 16kHz mono 16-bit PCM WAV
+	cmd := exec.Command("ffmpeg", "-y", "-i", path, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1")
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	cmdErr := cmd.Run()
+	if cmdErr == nil && out.Len() > 0 {
+		return ReadWAV(&out)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to read audio (wav error: %v, ffmpeg: %v: %s)", err, cmdErr, errBuf.String())
+	}
+	return nil, fmt.Errorf("no audio samples found in %s", path)
 }

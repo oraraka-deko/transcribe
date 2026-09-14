@@ -1,4 +1,4 @@
-module transcribe
+module github.com/oraraka-deko/transcribe
 
 go 1.27.1
 

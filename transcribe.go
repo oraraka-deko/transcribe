@@ -175,20 +175,20 @@ func (t *Transcriber) TranscribeAudio(samples []float32, sampleRate int) (string
 	return t.Transcribe(samples)
 }
 
-// TranscribeFile parses a WAV file (any sample rate, mono or stereo) and transcribes its audio.
+// TranscribeFile parses an audio file (WAV, OGG Opus, MP3, etc.) and transcribes its audio.
 func (t *Transcriber) TranscribeFile(audioPath string) (string, error) {
-	samples, err := ReadWAVFile(audioPath)
+	samples, err := ReadAudioFile(audioPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read WAV file: %w", err)
+		return "", fmt.Errorf("failed to read audio file: %w", err)
 	}
 	return t.Transcribe(samples)
 }
 
-// TranscribeFileSegments parses a WAV file and returns all transcribed segments with timing.
+// TranscribeFileSegments parses an audio file and returns all transcribed segments with timing.
 func (t *Transcriber) TranscribeFileSegments(audioPath string) ([]Segment, error) {
-	samples, err := ReadWAVFile(audioPath)
+	samples, err := ReadAudioFile(audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read WAV file: %w", err)
+		return nil, fmt.Errorf("failed to read audio file: %w", err)
 	}
 	return t.TranscribeSegments(samples)
 }
