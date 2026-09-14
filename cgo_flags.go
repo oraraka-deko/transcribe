@@ -1,4 +1,4 @@
-package main
+package transcribe
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/whisper.cpp/include -I${SRCDIR}/whisper.cpp/ggml/include
